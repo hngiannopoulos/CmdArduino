@@ -148,19 +148,24 @@ void cmd_handler()
         msg_ptr = msg;
         break;
 
+    case 127:
     case '\b':
         // backspace
-        stream->print(c);
         if (msg_ptr > msg)
         {
+            stream->print(c);
             msg_ptr--;
         }
         break;
 
     default:
-        // normal character entered. add it to the buffer
-        stream->print(c);
-        *msg_ptr++ = c;
+        /* Only print back if there's a valid character */
+        if(c >= ' ' && c <= '~'){
+           // normal character entered. add it to the buffer
+           stream->print(c);
+           *msg_ptr++ = c;
+        }
+
         break;
     }
 }

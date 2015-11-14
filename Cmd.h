@@ -44,6 +44,12 @@
 #define MAX_MSG_SIZE    60
 #include <stdint.h>
 
+
+/* Define VT100 Standard Escape Codes */
+#define VT100_CURSOR_UP    "\x1B[A"
+#define VT100_CURSOR_DOWN  "\x1B[B"
+#define VT100_ERASE_LINE   "\x1B[2K"
+
 // command line structure
 typedef struct _cmd_t
 {
