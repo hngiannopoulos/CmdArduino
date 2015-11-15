@@ -47,8 +47,17 @@
 #include "HardwareSerial.h"
 #include "Cmd.h"
 
+
+#define CMD_HISTORY_LEN 11
+#define CMD_HISTORY_WRAP(x)   (((x)) % CMD_HISTORY_LEN)
+
+static uint8_t cmd_history[CMD_HISTORY_LEN][MAX_MSG_SIZE] = {{0}};
+static int8_t history_ptr = 0;            // Stores the current place in the history buffer.
+static int8_t history_temp_index = 0;     // Stores where the current command is looking.
+
+
 // command line message buffer and pointer
-static uint8_t msg[MAX_MSG_SIZE];
+static uint8_t *msg;
 static uint8_t *msg_ptr;
 
 // linked list for command table
@@ -142,15 +151,23 @@ void cmd_handler()
     case '\r':
         // terminate the msg and reset the msg ptr. then send
         // it to the handler for processing.
-        *msg_ptr = '\0';
-        stream->print("\r\n");
+        *msg_ptr = '\0';         // Null Terminate the message 
+
+        stream->print("\r\n");   // Print the return characters
+
         cmd_parse((char *)msg);
+         
+        history_ptr = CMD_HISTORY_WRAP(history_ptr + 1);
+        history_temp_index = history_ptr;
+
+        msg = cmd_history[history_ptr];           // Reset The message pointer to the next history location.
         msg_ptr = msg;
+
         break;
 
     case 127:
     case '\b':
-        // backspace
+        /* If you won't end up before the message buffer by deleting a character */
         if (msg_ptr > msg)
         {
             stream->print(c);
@@ -159,15 +176,75 @@ void cmd_handler()
         break;
 
     default:
-        /* Only print back if there's a valid character */
-        if(c >= ' ' && c <= '~'){
-           // normal character entered. add it to the buffer
-           stream->print(c);
-           *msg_ptr++ = c;
-        }
+      /* Copy in the next character */
+      *msg_ptr++ = c;
 
-        break;
-    }
+      /* if you have enough chars for a possible command */
+      if(msg_ptr - VT100_CMD_LEN >= msg)
+      {
+
+         if(strncmp((char*)(msg_ptr - VT100_CMD_LEN), VT100_CURSOR_UP, VT100_CMD_LEN) == 0)
+         {
+
+            /* erase the VT100_UP Command from the end of the message */
+            *(msg_ptr - 2) = 0;
+            *(msg_ptr - 1) = 0;
+            *(msg_ptr )    = 0;
+
+            stream->print(VT100_ERASE_TO_START_LINE);
+            stream->print(cmd_prompt);
+
+            /* Go back one message relative to the current pos (Handle Wrap)*/
+            history_temp_index = CMD_HISTORY_WRAP(history_temp_index - 1);
+
+            /* Copy history temp index into current command buffer */
+            msg_ptr = msg + snprintf((char*)msg, MAX_MSG_SIZE, "%s", (char*)cmd_history[history_temp_index]);
+            stream->print((char*)msg);
+
+         }
+
+         else if(strncmp((char*)(msg_ptr - VT100_CMD_LEN), VT100_CURSOR_DOWN, VT100_CMD_LEN) == 0)
+         {
+            /* erase the VT100_DOWN Command from the end of the message */
+            *(msg_ptr - 2) = 0;
+            *(msg_ptr - 1) = 0;
+            *(msg_ptr )    = 0;
+
+            stream->print(VT100_ERASE_TO_START_LINE);
+            stream->print(cmd_prompt);
+
+            /* Go back one message relative to the current pos (Handle Wrap)*/
+            history_temp_index = CMD_HISTORY_WRAP(history_temp_index + 1);
+
+            /* Copy history temp index into current command buffer */
+            msg_ptr = msg + snprintf((char*)msg, MAX_MSG_SIZE, "%s", (char*)cmd_history[history_temp_index]);
+            stream->print((char*)msg);
+
+         }
+
+         /* TODO: Allow for movement of the cursor 
+         else if(strncmp((char*)(msg_ptr - VT100_CMD_LEN), VT100_CURSOR_RIGHT, VT100_CMD_LEN) == 0)
+         {
+         }
+
+         else if(strncmp((char*)(msg_ptr - VT100_CMD_LEN), VT100_CURSOR_LEFT, VT100_CMD_LEN) == 0)
+         {
+            //stream->print("found left");
+         }
+         END TODO: */
+      
+         /* Normal Char entered Print it; */
+         else if(c >= ' ' && c <= '~')
+         {
+            stream->print(c);
+         }
+      }
+
+      // normal character entered. Print it.
+      else if(c >= ' ' && c <= '~')
+        stream->print(c);
+      }
+   
 }
 
 /**************************************************************************/
@@ -194,10 +271,16 @@ void cmdInit(Stream *str)
 {
     stream = str;
     // init the msg ptr
-    msg_ptr = msg;
+    msg_ptr = cmd_history[history_ptr];
 
     // init the command table
     cmd_tbl_list = NULL;
+
+    for(int a = 0; a < CMD_HISTORY_LEN; a++){
+       for(int b = 0; b < MAX_MSG_SIZE; b++){
+         cmd_history[a][b] = 0;
+       }
+    }
 
 }
 
