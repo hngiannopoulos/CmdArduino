@@ -65,7 +65,7 @@ static uint8_t *msg_ptr;
 static cmd_t *cmd_tbl_list, *cmd_tbl;
 
 // text strings for command prompt (stored in flash)
-#ifdef CMD_LEGACY
+#if CMD_LEGACY
 #define BANNER_LEN 40
 #define PROMPT_LEN 7
 const char cmd_banner[BANNER_LEN] PROGMEM = "*************** CMD *******************";
@@ -93,9 +93,9 @@ void cmd_display()
 {
 
     char buf[PRINTER_LEN];
-    stream->println();
+    //stream->println();
 
-#ifdef CMD_LEGACY 
+#if CMD_LEGACY 
     strcpy_P(buf, cmd_banner);
     stream->println(buf);
 #else
@@ -185,10 +185,28 @@ void cmd_handler()
         history_temp_index = history_ptr;
 
         msg = cmd_history[history_ptr];           // Reset The message pointer to the next history location.
+
+        /* Reset the message */
+        memset(msg, 0, MAX_MSG_SIZE);
         msg_ptr = msg;
 
         break;
+   
+   /* Send Help / Usage */
+#ifdef USE_HELP
+   case '?':
 
+      stream->println();
+      stream->println("Printing Help: ");
+      for (cmd_t* cmd_entry = cmd_tbl; cmd_entry != NULL; cmd_entry = cmd_entry->next)
+      {
+       stream->println(cmd_entry->cmd);
+      }
+      cmd_display();
+      stream->print((char*)msg);
+      break;
+#endif
+      
     case 127:
     case '\b':
         /* If you won't end up before the message buffer by deleting a character */

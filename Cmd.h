@@ -56,6 +56,9 @@
 #define VT100_ERASE_TO_START_LINE      "\x1B[1K\r"
 #define VT100_CURSOR_HOME     "\x1B[;0H"
 
+#define USE_HELP  // Makes entering the ? char print all registered functions.
+#define CMD_LEGACY 0 // When 1 uses legacy command formatting;
+
 
 // command line structure
 typedef struct _cmd_t
