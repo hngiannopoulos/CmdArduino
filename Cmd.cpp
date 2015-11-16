@@ -49,7 +49,7 @@
 
 
 #define CMD_HISTORY_LEN 11
-#define CMD_HISTORY_WRAP(x)   (((x)) % CMD_HISTORY_LEN)
+#define CMD_HISTORY_WRAP(x)   ((x) < 0) ? CMD_HISTORY_LEN : (x >= CMD_HISTORY_LEN) ? 0 : (x)
 
 static uint8_t cmd_history[CMD_HISTORY_LEN][MAX_MSG_SIZE] = {{0}};
 static int8_t history_ptr = 0;            // Stores the current place in the history buffer.
@@ -143,6 +143,7 @@ void cmd_parse(char *cmd)
 /**************************************************************************/
 void cmd_handler()
 {
+    char temp_cmd[MAX_MSG_SIZE];
     char c = stream->read();
 
     switch (c)
@@ -154,8 +155,11 @@ void cmd_handler()
         *msg_ptr = '\0';         // Null Terminate the message 
 
         stream->print("\r\n");   // Print the return characters
+   
 
-        cmd_parse((char *)msg);
+        /* CMD parse changes the string, so we need to pass only a copy */
+        snprintf(temp_cmd, MAX_MSG_SIZE, "%s", msg);
+        cmd_parse((char *)temp_cmd);
          
         history_ptr = CMD_HISTORY_WRAP(history_ptr + 1);
         history_temp_index = history_ptr;
