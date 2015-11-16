@@ -50,6 +50,7 @@
 
 #define CMD_HISTORY_LEN 11
 #define CMD_HISTORY_WRAP(x)   ((x) < 0) ? CMD_HISTORY_LEN : (x >= CMD_HISTORY_LEN) ? 0 : (x)
+#define ARGC_MAX 10
 
 static uint8_t cmd_history[CMD_HISTORY_LEN][MAX_MSG_SIZE] = {{0}};
 static int8_t history_ptr = 0;            // Stores the current place in the history buffer.
@@ -64,9 +65,22 @@ static uint8_t *msg_ptr;
 static cmd_t *cmd_tbl_list, *cmd_tbl;
 
 // text strings for command prompt (stored in flash)
-const char cmd_banner[] PROGMEM = "*************** CMD *******************";
-const char cmd_prompt[] PROGMEM = "CMD >> ";
-const char cmd_unrecog[] PROGMEM = "CMD: Command not recognized.";
+#ifdef CMD_LEGACY
+#define BANNER_LEN 40
+#define PROMPT_LEN 7
+const char cmd_banner[BANNER_LEN] PROGMEM = "*************** CMD *******************";
+const char cmd_prompt[PROMPT_LEN] PROGMEM = "CMD >> ";
+
+#else
+#define PROMPT_LEN 3
+#define BANNER_LEN PROMPT_LEN
+const char cmd_prompt[PROMPT_LEN] PROGMEM = "$ ";
+#endif
+
+#define UNREC_LEN 30
+char cmd_unrecog[UNREC_LEN] PROGMEM = "CMD: Command not recognized.";
+#define PRINTER_LEN (UNREC_LEN > BANNER_LEN) ? UNREC_LEN : BANNER_LEN
+
 
 static Stream* stream;
 
@@ -77,15 +91,19 @@ static Stream* stream;
 /**************************************************************************/
 void cmd_display()
 {
-    char buf[50];
 
+    char buf[PRINTER_LEN];
     stream->println();
 
+#ifdef CMD_LEGACY 
     strcpy_P(buf, cmd_banner);
     stream->println(buf);
-
+#else
     strcpy_P(buf, cmd_prompt);
     stream->print(buf);
+#endif
+
+    return;
 }
 
 /**************************************************************************/
@@ -99,10 +117,12 @@ void cmd_parse(char *cmd)
 {
     uint8_t argc, i = 0;
     char *argv[30];
-    char buf[50];
+    char buf[PRINTER_LEN];
     cmd_t *cmd_entry;
 
+#ifdef CMD_LEGACPRINTER_LEN
     fflush(stdout);
+#endif
 
     // parse the command line statement and break it up into space-delimited
     // strings. the array of strings will be saved in the argv array.
@@ -110,7 +130,7 @@ void cmd_parse(char *cmd)
     do
     {
         argv[++i] = strtok(NULL, " ");
-    } while ((i < 30) && (argv[i] != NULL));
+    } while ((i < ARGC_MAX) && (argv[i] != NULL));
 
     // save off the number of arguments for the particular command.
     argc = i;
