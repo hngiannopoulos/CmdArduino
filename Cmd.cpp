@@ -60,6 +60,7 @@ static int8_t history_temp_index = 0;     // Stores where the current command is
 // command line message buffer and pointer
 static uint8_t *msg;
 static uint8_t *msg_ptr;
+static uint8_t cursor_pos = 0;
 
 // linked list for command table
 static cmd_t *cmd_tbl_list, *cmd_tbl;
@@ -189,6 +190,7 @@ void cmd_handler()
         /* Reset the message */
         memset(msg, 0, MAX_MSG_SIZE);
         msg_ptr = msg;
+        cursor_pos = 0;
 
         break;
    
@@ -213,13 +215,38 @@ void cmd_handler()
         if (msg_ptr > msg)
         {
             stream->print(c);
-            msg_ptr--;
+            *msg_ptr-- = 0;
+            cursor_pos--;
         }
+
         break;
 
     default:
-      /* Copy in the next character */
-      *msg_ptr++ = c;
+
+      /* ================= ADD Character ================== */
+      uint8_t *tmp_msg_ptr = msg_ptr;
+      
+      /* the cursor is at the end of the message */
+      if(cursor_pos == (msg_ptr - msg)) 
+      {
+         *msg_ptr++ = c;
+         cursor_pos++;
+      }
+      
+
+      /* insert a character at cursor pos */
+      else{
+         /* Copy all chars forward */
+         while(tmp_msg_ptr > (msg + cursor_pos))
+         {
+            *(tmp_msg_ptr + 1) = *tmp_msg_ptr;
+            tmp_msgptr--;
+         }
+         *(msg + cursor_pos) = c;
+         msg_ptr++;
+         cursor_pos++;
+      }
+      /* ============== END ADD CHARACTER ================== */
 
       /* if you have enough chars for a possible command */
       if(msg_ptr - VT100_CMD_LEN >= msg)
@@ -232,6 +259,7 @@ void cmd_handler()
             *(msg_ptr - 2) = 0;
             *(msg_ptr - 1) = 0;
             *(msg_ptr )    = 0;
+            cursor_pos -= 3;
 
             stream->print(VT100_ERASE_TO_START_LINE);
             stream->print(cmd_prompt);
@@ -241,6 +269,7 @@ void cmd_handler()
 
             /* Copy history temp index into current command buffer */
             msg_ptr = msg + snprintf((char*)msg, MAX_MSG_SIZE, "%s", (char*)cmd_history[history_temp_index]);
+            cursor_pos = msg - msg_ptr;
             stream->print((char*)msg);
 
          }
@@ -251,6 +280,8 @@ void cmd_handler()
             *(msg_ptr - 2) = 0;
             *(msg_ptr - 1) = 0;
             *(msg_ptr )    = 0;
+            cursor_pos -= 3;
+
 
             stream->print(VT100_ERASE_TO_START_LINE);
             stream->print(cmd_prompt);
@@ -260,33 +291,42 @@ void cmd_handler()
 
             /* Copy history temp index into current command buffer */
             msg_ptr = msg + snprintf((char*)msg, MAX_MSG_SIZE, "%s", (char*)cmd_history[history_temp_index]);
+            cursor_pos = msg - msg_ptr;
             stream->print((char*)msg);
 
          }
 
-         /* TODO: Allow for movement of the cursor 
          else if(strncmp((char*)(msg_ptr - VT100_CMD_LEN), VT100_CURSOR_RIGHT, VT100_CMD_LEN) == 0)
          {
+            *(msg_ptr - 2) = 0;
+            *(msg_ptr - 1) = 0;
+            *(msg_ptr )    = 0;
+            cursor_pos -= 3;
+
+            if(cursor_pos < (msg_ptr - msg))
+               cursor_pos++; 
          }
 
          else if(strncmp((char*)(msg_ptr - VT100_CMD_LEN), VT100_CURSOR_LEFT, VT100_CMD_LEN) == 0)
          {
-            //stream->print("found left");
+            *(msg_ptr - 2) = 0;
+            *(msg_ptr - 1) = 0;
+            *(msg_ptr )    = 0;
+            cursor_pos -= 3;
+
+            if(cursor_pos > 0)
+               cursor_pos--;
          }
-         END TODO: */
       
-         /* Normal Char entered Print it; */
-         else if(c >= ' ' && c <= '~')
-         {
-            stream->print(c);
-         }
       }
 
-      // normal character entered. Print it.
-      else if(c >= ' ' && c <= '~')
-        stream->print(c);
-      }
-   
+      stream->print(c);
+    }
+}
+
+void cmd_add_character(uint8_t * buff, uint8_t * msg_ptr, uint8_t cursor_pos, char c)
+{
+
 }
 
 /**************************************************************************/
