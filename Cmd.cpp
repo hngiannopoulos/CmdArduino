@@ -50,7 +50,7 @@
 
 #define CMD_HISTORY_LEN 11
 #define CMD_HISTORY_WRAP(x)   ((x) < 0) ? (CMD_HISTORY_LEN - 1) : (x >= CMD_HISTORY_LEN) ? 0 : (x)
-#define ARGC_MAX 10
+#define ARGC_MAX 12
 
 static uint8_t cmd_history[CMD_HISTORY_LEN][MAX_MSG_SIZE] = {{0}};
 static int8_t history_ptr = 0;            // Stores the current place in the history buffer.
