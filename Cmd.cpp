@@ -60,7 +60,7 @@ static int8_t history_temp_index = 0;     // Stores where the current command is
 // command line message buffer and pointer
 static uint8_t *msg;
 static uint8_t *msg_ptr;
-static uint8_t cursor_pos = 0;
+static int8_t cursor_pos = 0;
 
 // linked list for command table
 static cmd_t *cmd_tbl_list, *cmd_tbl;
@@ -175,6 +175,11 @@ void cmd_handler()
         // it to the handler for processing.
         *msg_ptr = '\0';         // Null Terminate the message 
 
+
+        /* TEMP */
+        stream->print("msg: (( ");
+        stream->print((char*)msg);
+
         stream->print("\r\n");   // Print the return characters
    
 
@@ -214,9 +219,10 @@ void cmd_handler()
         /* If you won't end up before the message buffer by deleting a character */
         if (msg_ptr > msg)
         {
-            stream->print(c);
             *msg_ptr-- = 0;
             cursor_pos--;
+
+            stream->print(c);
         }
 
         break;
@@ -226,26 +232,27 @@ void cmd_handler()
       /* ================= ADD Character ================== */
       uint8_t *tmp_msg_ptr = msg_ptr;
       
-      /* the cursor is at the end of the message */
-      if(cursor_pos == (msg_ptr - msg)) 
-      {
-         *msg_ptr++ = c;
-         cursor_pos++;
-      }
-      
+      /* Copy all chars forward */
+      tmp_msg_ptr = msg_ptr;
 
-      /* insert a character at cursor pos */
-      else{
-         /* Copy all chars forward */
-         while(tmp_msg_ptr > (msg + cursor_pos))
-         {
-            *(tmp_msg_ptr + 1) = *tmp_msg_ptr;
-            tmp_msgptr--;
-         }
-         *(msg + cursor_pos) = c;
-         msg_ptr++;
-         cursor_pos++;
+      //stream->print((char)(cursor_pos + '0'));
+      
+      while(tmp_msg_ptr > (msg + cursor_pos))
+      {
+         /* Copy the data forward */
+         *(tmp_msg_ptr + 1) = *tmp_msg_ptr;
+         tmp_msg_ptr--;
       }
+
+      *(tmp_msg_ptr) = c;
+      msg_ptr++;
+      cursor_pos++;
+
+      stream->print(VT100_ERASE_TO_START_LINE);
+      stream->print(cmd_prompt);
+      stream->print((char*)(msg));
+
+
       /* ============== END ADD CHARACTER ================== */
 
       /* if you have enough chars for a possible command */
@@ -259,7 +266,7 @@ void cmd_handler()
             *(msg_ptr - 2) = 0;
             *(msg_ptr - 1) = 0;
             *(msg_ptr )    = 0;
-            cursor_pos -= 3;
+            msg_ptr -= 3;
 
             stream->print(VT100_ERASE_TO_START_LINE);
             stream->print(cmd_prompt);
@@ -280,7 +287,7 @@ void cmd_handler()
             *(msg_ptr - 2) = 0;
             *(msg_ptr - 1) = 0;
             *(msg_ptr )    = 0;
-            cursor_pos -= 3;
+            msg_ptr -= 3;
 
 
             stream->print(VT100_ERASE_TO_START_LINE);
@@ -301,10 +308,14 @@ void cmd_handler()
             *(msg_ptr - 2) = 0;
             *(msg_ptr - 1) = 0;
             *(msg_ptr )    = 0;
+
+
+            msg_ptr -= 3;
             cursor_pos -= 3;
 
             if(cursor_pos < (msg_ptr - msg))
                cursor_pos++; 
+
          }
 
          else if(strncmp((char*)(msg_ptr - VT100_CMD_LEN), VT100_CURSOR_LEFT, VT100_CMD_LEN) == 0)
@@ -312,15 +323,14 @@ void cmd_handler()
             *(msg_ptr - 2) = 0;
             *(msg_ptr - 1) = 0;
             *(msg_ptr )    = 0;
+            msg_ptr -= 3;
             cursor_pos -= 3;
-
+            
+            /* If the cursor pos is not at the beginning */
             if(cursor_pos > 0)
                cursor_pos--;
          }
-      
       }
-
-      stream->print(c);
     }
 }
 
