@@ -258,21 +258,33 @@ void cmd_handler()
 
             stream->print("\r\n");   // Print the return characters
 
-            /* CMD parse changes the string, so we need to pass only a copy */
-            snprintf(temp_cmd, MAX_MSG_SIZE, "%s", msg);
-            cmd_parse((char *)temp_cmd);
+            /* only process if you don't have an empty message */
+            if(msg_ptr != msg)
+            {
 
-            /* Wrap the history pointer */
-            history_ptr = CMD_HISTORY_WRAP(history_ptr + 1);
+               /* CMD parse changes the string, so we need to pass only a copy */
+               snprintf(temp_cmd, MAX_MSG_SIZE, "%s", msg);
+               cmd_parse((char *)temp_cmd);
 
-            /* Reset the history_temp_index for this command */
-            history_temp_index = history_ptr;
+               /* Wrap the history pointer */
+               history_ptr = CMD_HISTORY_WRAP(history_ptr + 1);
 
-            /* get the latest message buffer ptr (From next history) */
-            msg = cmd_history[history_ptr];           // Reset The message pointer to the next history location.
+               /* Reset the history_temp_index for this command */
+               history_temp_index = history_ptr;
 
-            /* Reset the message */
-            memset(msg, 0, MAX_MSG_SIZE);
+               /* get the latest message buffer ptr (From next history) */
+               msg = cmd_history[history_ptr];           // Reset The message pointer to the next history location.
+
+               /* Reset the message */
+               memset(msg, 0, MAX_MSG_SIZE);
+
+            }
+
+            else
+            {
+               cmd_display();
+            }
+
 
             msg_ptr = msg;
             cursor_pos = 0;
