@@ -47,6 +47,7 @@
 
 /* Define VT100 Standard Escape Codes */
 #define VT100_CMD_LEN         3  // These commands are always 3 characters.
+#define VT100_ESC             '\x1B'
 #define VT100_CURSOR_UP       "\x1B[A"
 #define VT100_CURSOR_DOWN     "\x1B[B"
 #define VT100_CURSOR_RIGHT    "\x1B[C"
@@ -54,6 +55,7 @@
 
 #define VT100_ERASE_WHOLE_LINE      "\x1B[2K\r"
 #define VT100_ERASE_TO_START_LINE      "\x1B[1K\r"
+#define VT100_ERASE_TO_END_LINE      "\x1B[K"
 #define VT100_CURSOR_HOME     "\x1B[;0H"
 
 #define USE_HELP  // Makes entering the ? char print all registered functions.

@@ -164,174 +164,219 @@ void cmd_parse(char *cmd)
 /**************************************************************************/
 void cmd_handler()
 {
-    char temp_cmd[MAX_MSG_SIZE];
-    char c = stream->read();
-
-    switch (c)
-    {
-    case '.':
-    case '\r':
-        // terminate the msg and reset the msg ptr. then send
-        // it to the handler for processing.
-        *msg_ptr = '\0';         // Null Terminate the message 
 
 
-        /* TEMP */
-        stream->print("msg: (( ");
-        stream->print((char*)msg);
+   /* Used to copy actual command to so that history isn't corrupted */
+   char temp_cmd[MAX_MSG_SIZE];
 
-        stream->print("\r\n");   // Print the return characters
-   
+   /* buffer for checking vt_commands */
+   char vt_cmd[VT100_CMD_LEN];
 
-        /* CMD parse changes the string, so we need to pass only a copy */
-        snprintf(temp_cmd, MAX_MSG_SIZE, "%s", msg);
-        cmd_parse((char *)temp_cmd);
-         
-        history_ptr = CMD_HISTORY_WRAP(history_ptr + 1);
-        history_temp_index = history_ptr;
+   char c = stream->peek();
 
-        msg = cmd_history[history_ptr];           // Reset The message pointer to the next history location.
+   uint8_t *tmp_msg_ptr = msg_ptr;
 
-        /* Reset the message */
-        memset(msg, 0, MAX_MSG_SIZE);
-        msg_ptr = msg;
-        cursor_pos = 0;
+   /* Deal With a control command */
+   if(c == VT100_ESC)
+   {
 
-        break;
-   
-   /* Send Help / Usage */
-#ifdef USE_HELP
-   case '?':
+      /* wait for the whole command to come through */
+      while(stream->available() < VT100_CMD_LEN)
+         ;
 
-      stream->println();
-      stream->println("Printing Help: ");
-      for (cmd_t* cmd_entry = cmd_tbl; cmd_entry != NULL; cmd_entry = cmd_entry->next)
+      /* Read the command into a buffer */
+      for(uint8_t i = 0; i < VT100_CMD_LEN; i++)
       {
-       stream->println(cmd_entry->cmd);
+         vt_cmd[i] = stream->read();
       }
-      cmd_display();
-      stream->print((char*)msg);
-      break;
-#endif
-      
-    case 127:
-    case '\b':
-        /* If you won't end up before the message buffer by deleting a character */
-        if (msg_ptr > msg)
-        {
-            *msg_ptr-- = 0;
+
+      if(strncmp(vt_cmd, VT100_CURSOR_UP, VT100_CMD_LEN) == 0)
+      {
+
+         stream->print(VT100_ERASE_TO_START_LINE);
+         stream->print(cmd_prompt);
+
+         /* Go back one message relative to the current pos (Handle Wrap)*/
+         history_temp_index = CMD_HISTORY_WRAP(history_temp_index - 1);
+
+         /* Copy history temp index into current command buffer */
+         msg_ptr = msg + snprintf((char*)msg, MAX_MSG_SIZE, "%s", (char*)cmd_history[history_temp_index]);
+         cursor_pos = msg_ptr - msg;
+         stream->print((char*)msg);
+
+      }
+
+      else if(strncmp(vt_cmd, VT100_CURSOR_DOWN, VT100_CMD_LEN) == 0)
+      {
+
+         stream->print(VT100_ERASE_TO_START_LINE);
+         stream->print(cmd_prompt);
+
+         /* Go back one message relative to the current pos (Handle Wrap)*/
+         history_temp_index = CMD_HISTORY_WRAP(history_temp_index + 1);
+
+         /* Copy history temp index into current command buffer */
+         msg_ptr = msg + snprintf((char*)msg, MAX_MSG_SIZE, "%s", (char*)cmd_history[history_temp_index]);
+         cursor_pos = msg - msg_ptr;
+         stream->print((char*)msg);
+
+      }
+
+      else if(strncmp(vt_cmd, VT100_CURSOR_RIGHT, VT100_CMD_LEN) == 0)
+      {
+         if(cursor_pos < (msg_ptr - msg))
+         {
+            stream->print(VT100_CURSOR_RIGHT);
+            cursor_pos++; 
+         }
+      }
+
+      else if(strncmp(vt_cmd, VT100_CURSOR_LEFT, VT100_CMD_LEN) == 0)
+      { 
+         /* If the cursor pos is not at the beginning */
+
+         if(cursor_pos > 0)
+         {
+            stream->print(VT100_CURSOR_LEFT);
             cursor_pos--;
-
-            stream->print(c);
-        }
-
-        break;
-
-    default:
-
-      /* ================= ADD Character ================== */
-      uint8_t *tmp_msg_ptr = msg_ptr;
-      
-      /* Copy all chars forward */
-      tmp_msg_ptr = msg_ptr;
-
-      //stream->print((char)(cursor_pos + '0'));
-      
-      while(tmp_msg_ptr > (msg + cursor_pos))
-      {
-         /* Copy the data forward */
-         *(tmp_msg_ptr + 1) = *tmp_msg_ptr;
-         tmp_msg_ptr--;
+         }
       }
 
-      *(tmp_msg_ptr) = c;
-      msg_ptr++;
-      cursor_pos++;
+   } //if(c == VT100_ESC)
 
-      stream->print(VT100_ERASE_TO_START_LINE);
-      stream->print(cmd_prompt);
-      stream->print((char*)(msg));
+   else
+   {
 
-
-      /* ============== END ADD CHARACTER ================== */
-
-      /* if you have enough chars for a possible command */
-      if(msg_ptr - VT100_CMD_LEN >= msg)
+      c = stream->read();
+      switch (c)
       {
+         case '.':
+         case '\r':
+            // terminate the msg and reset the msg ptr. then send
+            // it to the handler for processing.
+            *msg_ptr = '\0';         // Null Terminate the message 
 
-         if(strncmp((char*)(msg_ptr - VT100_CMD_LEN), VT100_CURSOR_UP, VT100_CMD_LEN) == 0)
-         {
+            stream->print("\r\n");   // Print the return characters
 
-            /* erase the VT100_UP Command from the end of the message */
-            *(msg_ptr - 2) = 0;
-            *(msg_ptr - 1) = 0;
-            *(msg_ptr )    = 0;
-            msg_ptr -= 3;
+            /* CMD parse changes the string, so we need to pass only a copy */
+            snprintf(temp_cmd, MAX_MSG_SIZE, "%s", msg);
+            cmd_parse((char *)temp_cmd);
 
-            stream->print(VT100_ERASE_TO_START_LINE);
-            stream->print(cmd_prompt);
+            /* Wrap the history pointer */
+            history_ptr = CMD_HISTORY_WRAP(history_ptr + 1);
 
-            /* Go back one message relative to the current pos (Handle Wrap)*/
-            history_temp_index = CMD_HISTORY_WRAP(history_temp_index - 1);
+            /* Reset the history_temp_index for this command */
+            history_temp_index = history_ptr;
 
-            /* Copy history temp index into current command buffer */
-            msg_ptr = msg + snprintf((char*)msg, MAX_MSG_SIZE, "%s", (char*)cmd_history[history_temp_index]);
-            cursor_pos = msg - msg_ptr;
+            /* get the latest message buffer ptr (From next history) */
+            msg = cmd_history[history_ptr];           // Reset The message pointer to the next history location.
+
+            /* Reset the message */
+            memset(msg, 0, MAX_MSG_SIZE);
+
+            msg_ptr = msg;
+            cursor_pos = 0;
+
+         break;
+
+         /* Send Help / Usage */
+#ifdef USE_HELP
+         case '?':
+
+            stream->println();
+            stream->println("Printing Help: ");
+
+            /* Loop through the command table and print the commands */
+            for (cmd_t* cmd_entry = cmd_tbl; cmd_entry != NULL; cmd_entry = cmd_entry->next)
+            {
+               stream->println(cmd_entry->cmd);
+            }
+
+            cmd_display();
             stream->print((char*)msg);
 
-         }
+         break;
+#endif
 
-         else if(strncmp((char*)(msg_ptr - VT100_CMD_LEN), VT100_CURSOR_DOWN, VT100_CMD_LEN) == 0)
-         {
-            /* erase the VT100_DOWN Command from the end of the message */
-            *(msg_ptr - 2) = 0;
-            *(msg_ptr - 1) = 0;
-            *(msg_ptr )    = 0;
-            msg_ptr -= 3;
+         case 127:
+         case '\b':
 
+            /* If you won't end up before the message buffer by deleting a character */
+            if ((msg_ptr > msg) && (cursor_pos > 0))
+            {
+               tmp_msg_ptr = msg + (cursor_pos - 1);
+               while(tmp_msg_ptr <= msg_ptr){
+                  *tmp_msg_ptr = *(tmp_msg_ptr + 1);
+                  tmp_msg_ptr++;
+               }
 
-            stream->print(VT100_ERASE_TO_START_LINE);
-            stream->print(cmd_prompt);
+               tmp_msg_ptr = msg_ptr;
+               /* reset the rest of the message */
+               while(tmp_msg_ptr < msg + MAX_MSG_SIZE)
+               {
+                  *(tmp_msg_ptr++) = 0;
+               }
 
-            /* Go back one message relative to the current pos (Handle Wrap)*/
-            history_temp_index = CMD_HISTORY_WRAP(history_temp_index + 1);
-
-            /* Copy history temp index into current command buffer */
-            msg_ptr = msg + snprintf((char*)msg, MAX_MSG_SIZE, "%s", (char*)cmd_history[history_temp_index]);
-            cursor_pos = msg - msg_ptr;
-            stream->print((char*)msg);
-
-         }
-
-         else if(strncmp((char*)(msg_ptr - VT100_CMD_LEN), VT100_CURSOR_RIGHT, VT100_CMD_LEN) == 0)
-         {
-            *(msg_ptr - 2) = 0;
-            *(msg_ptr - 1) = 0;
-            *(msg_ptr )    = 0;
-
-
-            msg_ptr -= 3;
-            cursor_pos -= 3;
-
-            if(cursor_pos < (msg_ptr - msg))
-               cursor_pos++; 
-
-         }
-
-         else if(strncmp((char*)(msg_ptr - VT100_CMD_LEN), VT100_CURSOR_LEFT, VT100_CMD_LEN) == 0)
-         {
-            *(msg_ptr - 2) = 0;
-            *(msg_ptr - 1) = 0;
-            *(msg_ptr )    = 0;
-            msg_ptr -= 3;
-            cursor_pos -= 3;
-            
-            /* If the cursor pos is not at the beginning */
-            if(cursor_pos > 0)
+               msg_ptr--;
                cursor_pos--;
+
+               stream->print(c);
+               stream->print(VT100_ERASE_TO_END_LINE);
+               stream->print((char*)(msg + cursor_pos));
+         
+               tmp_msg_ptr = msg + cursor_pos;
+               
+               /* move the cursor back to where it came */
+               while(tmp_msg_ptr < msg_ptr)
+               {
+                  stream->print(VT100_CURSOR_LEFT);
+                  tmp_msg_ptr++;
+               }
+
+            }
+
+
+         break;
+
+      default:
+
+         if((msg - msg_ptr) < MAX_MSG_SIZE){
+            /* ================= ADD Character ================== */
+
+            /* Copy all chars forward */
+            tmp_msg_ptr = msg_ptr;
+
+            while(tmp_msg_ptr >= (msg + cursor_pos))
+            {
+               /* Copy the data forward */
+               *(tmp_msg_ptr + 1) = *tmp_msg_ptr;
+               tmp_msg_ptr--;
+            }
+
+            /* Copy in new message pointer */
+            *(tmp_msg_ptr + 1) = c;
+
+            msg_ptr++;
+
+            stream->print(VT100_ERASE_TO_END_LINE);
+            stream->print((char*)(msg + cursor_pos));
+
+            cursor_pos++;
+
+            /* move the cursor back to where it came */
+            tmp_msg_ptr = msg + cursor_pos;
+            while(tmp_msg_ptr < msg_ptr)
+            {
+               stream->print(VT100_CURSOR_LEFT);
+               tmp_msg_ptr++;
+            }
+
+            /* ============== END ADD CHARACTER ================== */
          }
-      }
-    }
+         break;
+      } // switch(c)
+
+    }//else
 }
 
 void cmd_add_character(uint8_t * buff, uint8_t * msg_ptr, uint8_t cursor_pos, char c)
