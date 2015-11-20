@@ -72,7 +72,7 @@ typedef struct _cmd_t
 
 void cmdInit(Stream *);
 void cmdPoll();
-void cmdAdd(char *name, void (*func)(int argc, char **argv));
+void cmdAdd(const char *name, void (*func)(int argc, char **argv));
 uint32_t cmdStr2Num(char *str, uint8_t base);
 void cmd_add_character(uint8_t ** buff, uint8_t ** msg_ptr, uint8_t cursor_pos, char c);
 

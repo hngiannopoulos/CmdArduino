@@ -391,11 +391,6 @@ void cmd_handler()
     }//else
 }
 
-void cmd_add_character(uint8_t * buff, uint8_t * msg_ptr, uint8_t cursor_pos, char c)
-{
-
-}
-
 /**************************************************************************/
 /*!
     This function should be set inside the main loop. It needs to be called
@@ -439,7 +434,7 @@ void cmdInit(Stream *str)
     at the setup() portion of the sketch.
 */
 /**************************************************************************/
-void cmdAdd(char *name, void (*func)(int argc, char **argv))
+void cmdAdd(const char *name, void (*func)(int argc, char **argv))
 {
     // alloc memory for command struct
     cmd_tbl = (cmd_t *)malloc(sizeof(cmd_t));
