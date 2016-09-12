@@ -38,6 +38,10 @@
     its possible to execute individual functions within the sketch.
 */
 /**************************************************************************/
+#include "Cmd.h"
+#ifdef XILINX
+// Pause here
+#else
 #include <avr/pgmspace.h>
 #if ARDUINO >= 100
 #include <Arduino.h>
@@ -45,8 +49,11 @@
 #include <WProgram.h>
 #endif
 #include "HardwareSerial.h"
-#include "Cmd.h"
+#endif
 
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
 
 #define CMD_HISTORY_LEN 11
 #define CMD_HISTORY_WRAP(x)   ((x) < 0) ? (CMD_HISTORY_LEN - 1) : (x >= CMD_HISTORY_LEN) ? 0 : (x)
@@ -68,21 +75,37 @@ static cmd_t *cmd_tbl_list, *cmd_tbl;
 #if CMD_LEGACY
 #define BANNER_LEN 40
 #define PROMPT_LEN 7
+#ifdef XILINX
+const char cmd_banner[BANNER_LEN] = "*************** CMD *******************";
+const char cmd_prompt[PROMPT_LEN] = "CMD >> ";
+#else
 const char cmd_banner[BANNER_LEN] PROGMEM = "*************** CMD *******************";
 const char cmd_prompt[PROMPT_LEN] PROGMEM = "CMD >> ";
-
+#endif
 #else
 #define PROMPT_LEN 3
 #define BANNER_LEN PROMPT_LEN
+#ifdef XILINX
+const char cmd_prompt[PROMPT_LEN]= "$ ";
+#else
 const char cmd_prompt[PROMPT_LEN] PROGMEM = "$ ";
+#endif
 #endif
 
 #define UNREC_LEN 30
+#ifdef XILINX
+char cmd_unrecog[UNREC_LEN] = "CMD: Command not recognized.";
+#else
 char cmd_unrecog[UNREC_LEN] PROGMEM = "CMD: Command not recognized.";
+#endif
+
 #define PRINTER_LEN (UNREC_LEN > BANNER_LEN) ? UNREC_LEN : BANNER_LEN
 
-
-static Stream* stream;
+#ifdef XILINX
+static XUartPs * instance_ptr;
+#else
+static Stream * stream;
+#endif
 
 /**************************************************************************/
 /*!
@@ -96,11 +119,24 @@ void cmd_display()
     //stream->println();
 
 #if CMD_LEGACY 
+#ifdef XILINX
+    strcpy(buf, cmd_banner);
+#else
     strcpy_P(buf, cmd_banner);
-    stream->println(buf);
+#endif
+    //stream->println(buf);
+    XUartPs_Send(instance_ptr, buf, strlen(buf));
+    // TODO: Fix Stream here.
+#else
+    
+#ifdef XILINX
+    strcpy(buf, cmd_prompt);
 #else
     strcpy_P(buf, cmd_prompt);
-    stream->print(buf);
+#endif
+    //stream->print(buf);
+    XUartPs_Send(instance_ptr, buf, strlen(buf));
+
 #endif
 
     return;
@@ -148,8 +184,14 @@ void cmd_parse(char *cmd)
     }
 
     // command not recognized. print message and re-generate prompt.
+#ifdef XILINX
+    strcpy(buf, cmd_unrecog);
+#else
     strcpy_P(buf, cmd_unrecog);
-    stream->println(buf);
+#endif
+    //stream->println(buf);
+    XUartPs_Send(instance_ptr, buf, strlen(buf));
+
 
     cmd_display();
 }
@@ -164,7 +206,10 @@ void cmd_parse(char *cmd)
 void cmd_handler()
 {
     char temp_cmd[MAX_MSG_SIZE];
-    char c = stream->read();
+    //char c = stream->read();
+    char c = 0;
+    XUartPs_Recv(instance_ptr, &c, 1);
+
 
     switch (c)
     {
@@ -174,7 +219,8 @@ void cmd_handler()
         // it to the handler for processing.
         *msg_ptr = '\0';         // Null Terminate the message 
 
-        stream->print("\r\n");   // Print the return characters
+        //stream->print("\r\n");   // Print the return characters
+        XUartPs_Send(instance_ptr, "\r\n", 2);
    
 
         /* CMD parse changes the string, so we need to pass only a copy */
@@ -196,14 +242,20 @@ void cmd_handler()
 #ifdef USE_HELP
    case '?':
 
-      stream->println();
-      stream->println("Printing Help: ");
+      //stream->println();
+      //stream->println("Printing Help: ");
+      XUartPs_Send(instance_ptr, "\r\n", 2);
+      XUartPs_Send(instance_ptr, "Printing Help:", strlen("Printing Help"));
+
+
       for (cmd_t* cmd_entry = cmd_tbl; cmd_entry != NULL; cmd_entry = cmd_entry->next)
       {
-       stream->println(cmd_entry->cmd);
+         //stream->println(cmd_entry->cmd);
+         XUartPs_Send(instance_ptr, cmd_entry->cmd, strlen(cmd_entry->cmd));
       }
       cmd_display();
-      stream->print((char*)msg);
+      //stream->print((char*)msg);
+      XUartPs_Send(instance_ptr, msg, strlen(msg));
       break;
 #endif
       
@@ -212,7 +264,8 @@ void cmd_handler()
         /* If you won't end up before the message buffer by deleting a character */
         if (msg_ptr > msg)
         {
-            stream->print(c);
+            //stream->print(c);
+        	XUartPs_Send(instance_ptr, &c, 1);
             msg_ptr--;
         }
         break;
@@ -233,15 +286,20 @@ void cmd_handler()
             *(msg_ptr - 1) = 0;
             *(msg_ptr )    = 0;
 
-            stream->print(VT100_ERASE_TO_START_LINE);
-            stream->print(cmd_prompt);
+            //stream->print(VT100_ERASE_TO_START_LINE);
+            //stream->print(cmd_prompt);
+            XUartPs_Send(instance_ptr, VT100_ERASE_TO_START_LINE, strlen(VT100_ERASE_TO_START_LINE));
+            XUartPs_Send(instance_ptr, cmd_prompt, strlen(cmd_prompt));
+
 
             /* Go back one message relative to the current pos (Handle Wrap)*/
             history_temp_index = CMD_HISTORY_WRAP(history_temp_index - 1);
 
             /* Copy history temp index into current command buffer */
             msg_ptr = msg + snprintf((char*)msg, MAX_MSG_SIZE, "%s", (char*)cmd_history[history_temp_index]);
-            stream->print((char*)msg);
+            XUartPs_Send(instance_ptr,(char*)msg, strlen(msg));
+
+            //stream->print((char*)msg);
 
          }
 
@@ -252,15 +310,19 @@ void cmd_handler()
             *(msg_ptr - 1) = 0;
             *(msg_ptr )    = 0;
 
-            stream->print(VT100_ERASE_TO_START_LINE);
-            stream->print(cmd_prompt);
+            //stream->print(VT100_ERASE_TO_START_LINE);
+            //stream->print(cmd_prompt);
+            XUartPs_Send(instance_ptr, VT100_ERASE_TO_START_LINE, strlen(VT100_ERASE_TO_START_LINE));
+	    XUartPs_Send(instance_ptr, cmd_prompt, strlen(cmd_prompt));
+
 
             /* Go back one message relative to the current pos (Handle Wrap)*/
             history_temp_index = CMD_HISTORY_WRAP(history_temp_index + 1);
 
             /* Copy history temp index into current command buffer */
             msg_ptr = msg + snprintf((char*)msg, MAX_MSG_SIZE, "%s", (char*)cmd_history[history_temp_index]);
-            stream->print((char*)msg);
+            //stream->print((char*)msg);
+            XUartPs_Send(instance_ptr,(char*)msg, strlen(msg));
 
          }
 
@@ -278,13 +340,14 @@ void cmd_handler()
          /* Normal Char entered Print it; */
          else if(c >= ' ' && c <= '~')
          {
-            stream->print(c);
+            //stream->print(c);
+            XUartPs_Send(instance_ptr, &c, 1);
          }
       }
 
       // normal character entered. Print it.
       else if(c >= ' ' && c <= '~')
-        stream->print(c);
+    	  XUartPs_Send(instance_ptr, &c, 1);
       }
    
 }
@@ -297,7 +360,7 @@ void cmd_handler()
 /**************************************************************************/
 void cmdPoll()
 {
-    while (stream->available())
+    while (XUartPs_IsReceiveData(instance_ptr->Config.BaseAddress))
     {
         cmd_handler();
     }
@@ -309,9 +372,10 @@ void cmdPoll()
     and initializes things.
 */
 /**************************************************************************/
-void cmdInit(Stream *str)
+void cmdInit(XUartPs * ptr)
 {
-    stream = str;
+	instance_ptr = ptr;
+
     // init the msg ptr
     msg_ptr = cmd_history[history_ptr];
 

@@ -40,9 +40,10 @@
 /**************************************************************************/
 #ifndef CMD_H
 #define CMD_H
+#define XILINX
 
 #define MAX_MSG_SIZE    60
-#include <stdint.h>
+
 
 
 /* Define VT100 Standard Escape Codes */
@@ -56,7 +57,7 @@
 #define VT100_ERASE_TO_START_LINE      "\x1B[1K\r"
 #define VT100_CURSOR_HOME     "\x1B[;0H"
 
-#define USE_HELP  // Makes entering the ? char print all registered functions.
+//#define USE_HELP  // Makes entering the ? char print all registered functions.
 #define CMD_LEGACY 0 // When 1 uses legacy command formatting;
 
 
@@ -68,7 +69,13 @@ typedef struct _cmd_t
     struct _cmd_t *next;
 } cmd_t;
 
-void cmdInit(Stream *);
+#ifdef XILINX
+#include "xuartps.h"
+void cmdInit(XUartPs *InstancePtr);
+#else
+void cmdInit(Stream * stream);
+#endif
+
 void cmdPoll();
 void cmdAdd(char *name, void (*func)(int argc, char **argv));
 uint32_t cmdStr2Num(char *str, uint8_t base);
