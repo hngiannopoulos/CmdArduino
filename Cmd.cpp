@@ -67,6 +67,7 @@ static int8_t history_temp_index = 0;     // Stores where the current command is
 // command line message buffer and pointer
 static uint8_t *msg;
 static uint8_t *msg_ptr;
+static int8_t cursor_pos = 0;
 
 // linked list for command table
 static cmd_t *cmd_tbl_list, *cmd_tbl;
@@ -205,151 +206,244 @@ void cmd_parse(char *cmd)
 /**************************************************************************/
 void cmd_handler()
 {
-    char temp_cmd[MAX_MSG_SIZE];
-    //char c = stream->read();
-    char c = 0;
-    XUartPs_Recv(instance_ptr, &c, 1);
+
+   /* Used to copy actual command to so that history isn't corrupted */
+   char temp_cmd[MAX_MSG_SIZE];
+
+   /* buffer for checking vt_commands */
+   char vt_cmd[VT100_CMD_LEN];
+
+   char c = stream->peek();
+
+   uint8_t *tmp_msg_ptr = msg_ptr;
+
+   /* Deal With a control command */
+   if(c == VT100_ESC)
+   {
+
+      /* wait for the whole command to come through */
+      while(stream->available() < VT100_CMD_LEN)
+         ;
+
+      /* Read the command into a buffer */
+      for(uint8_t i = 0; i < VT100_CMD_LEN; i++)
+      {
+         vt_cmd[i] = stream->read();
+      }
+
+      if(strncmp(vt_cmd, VT100_CURSOR_UP, VT100_CMD_LEN) == 0)
+      {
+
+         XUartPs_Send(instance_ptr, VT100_ERASE_TO_START_LINE, strlen(VT100_ERASE_TO_START_LINE));
+         XUartPs_Send(instance_ptr, cmd_prompt, strlen(cmd_prompt));
+
+         /* Go back one message relative to the current pos (Handle Wrap)*/
+         history_temp_index = CMD_HISTORY_WRAP(history_temp_index - 1);
+
+         /* Copy history temp index into current command buffer */
+         msg_ptr = msg + snprintf((char*)msg, MAX_MSG_SIZE, "%s", (char*)cmd_history[history_temp_index]);
+         cursor_pos = msg_ptr - msg;
+         XUartPs_Send(instance_ptr, (char*)msg, strlen(msg));
+
+      }
+
+      else if(strncmp(vt_cmd, VT100_CURSOR_DOWN, VT100_CMD_LEN) == 0)
+      {
+
+         XUartPs_Send(instance_ptr, VT100_ERASE_TO_START_LINE, strlen(VT100_ERASE_TO_START_LINE));
+         XUartPs_Send(instance_ptr, cmd_prompt, strlen(cmd_prompt));
+
+         /* Go back one message relative to the current pos (Handle Wrap)*/
+         history_temp_index = CMD_HISTORY_WRAP(history_temp_index + 1);
+
+         /* Copy history temp index into current command buffer */
+         msg_ptr = msg + snprintf((char*)msg, MAX_MSG_SIZE, "%s", (char*)cmd_history[history_temp_index]);
+         cursor_pos = msg - msg_ptr;
+         XUartPs_Send(instance_ptr, (char*)msg, strlen(msg));
+
+      }
+
+      else if(strncmp(vt_cmd, VT100_CURSOR_RIGHT, VT100_CMD_LEN) == 0)
+      {
+         if(cursor_pos < (msg_ptr - msg))
+         {
+            stream->print(VT100_CURSOR_RIGHT);
+            cursor_pos++; 
+         }
+      }
+
+      else if(strncmp(vt_cmd, VT100_CURSOR_LEFT, VT100_CMD_LEN) == 0)
+      { 
+         /* If the cursor pos is not at the beginning */
+
+         if(cursor_pos > 0)
+         {
+            stream->print(VT100_CURSOR_LEFT);
+            cursor_pos--;
+         }
+      }
+
+   } //if(c == VT100_ESC)
+
+   else
+   {
+
+      c = stream->read();
+      switch (c)
+      {
+         case '.':
+         case '\r':
+            // terminate the msg and reset the msg ptr. then send
+            // it to the handler for processing.
+            *msg_ptr = '\0';         // Null Terminate the message 
+
+            stream->print("\r\n");   // Print the return characters
+
+            /* only process if you don't have an empty message */
+            if(msg_ptr != msg)
+            {
+
+               /* CMD parse changes the string, so we need to pass only a copy */
+               snprintf(temp_cmd, MAX_MSG_SIZE, "%s", msg);
+               cmd_parse((char *)temp_cmd);
+
+               /* Wrap the history pointer */
+               history_ptr = CMD_HISTORY_WRAP(history_ptr + 1);
+
+               /* Reset the history_temp_index for this command */
+               history_temp_index = history_ptr;
+
+               /* get the latest message buffer ptr (From next history) */
+               msg = cmd_history[history_ptr];           // Reset The message pointer to the next history location.
+
+               /* Reset the message */
+               memset(msg, 0, MAX_MSG_SIZE);
+
+            }
+
+            else
+            {
+               cmd_display();
+            }
 
 
-    switch (c)
-    {
-    case '.':
-    case '\r':
-        // terminate the msg and reset the msg ptr. then send
-        // it to the handler for processing.
-        *msg_ptr = '\0';         // Null Terminate the message 
+            msg_ptr = msg;
+            cursor_pos = 0;
 
-        //stream->print("\r\n");   // Print the return characters
-        XUartPs_Send(instance_ptr, "\r\n", 2);
-   
+         break;
 
-        /* CMD parse changes the string, so we need to pass only a copy */
-        snprintf(temp_cmd, MAX_MSG_SIZE, "%s", msg);
-        cmd_parse((char *)temp_cmd);
-         
-        history_ptr = CMD_HISTORY_WRAP(history_ptr + 1);
-        history_temp_index = history_ptr;
-
-        msg = cmd_history[history_ptr];           // Reset The message pointer to the next history location.
-
-        /* Reset the message */
-        memset(msg, 0, MAX_MSG_SIZE);
-        msg_ptr = msg;
-
-        break;
-   
-   /* Send Help / Usage */
+         /* Send Help / Usage */
 #ifdef USE_HELP
-   case '?':
-
-      //stream->println();
-      //stream->println("Printing Help: ");
-      XUartPs_Send(instance_ptr, "\r\n", 2);
-      XUartPs_Send(instance_ptr, "Printing Help:", strlen("Printing Help"));
+         case '?':
 
 
-      for (cmd_t* cmd_entry = cmd_tbl; cmd_entry != NULL; cmd_entry = cmd_entry->next)
-      {
-         //stream->println(cmd_entry->cmd);
-         XUartPs_Send(instance_ptr, cmd_entry->cmd, strlen(cmd_entry->cmd));
-      }
-      cmd_display();
-      //stream->print((char*)msg);
-      XUartPs_Send(instance_ptr, msg, strlen(msg));
-      break;
+            XUartPs_Send(instance_ptr, "\r\n", 2);
+            XUartPs_Send(instance_ptr, "Printing Help:", strlen("Printing Help:");
+
+            /* Loop through the command table and print the commands */
+            for (cmd_t* cmd_entry = cmd_tbl; cmd_entry != NULL; cmd_entry = cmd_entry->next)
+            {
+
+               XUartPs_Send(instance_ptr, cmd_entry->cmd, strlen(cmd_entry->cmd));
+
+            }
+
+            cmd_display();
+
+            XUartPs_Send(instance_ptr, (char*)msg, strlen(msg));
+            stream->print((char*)msg);
+
+         break;
 #endif
+
+         case 127:
+         case '\b':
+
+            /* If you won't end up before the message buffer by deleting a character */
+            if ((msg_ptr > msg) && (cursor_pos > 0))
+            {
+               tmp_msg_ptr = msg + (cursor_pos - 1);
+               while(tmp_msg_ptr <= msg_ptr){
+                  *tmp_msg_ptr = *(tmp_msg_ptr + 1);
+                  tmp_msg_ptr++;
+               }
+
+               tmp_msg_ptr = msg_ptr;
+               /* reset the rest of the message */
+               while(tmp_msg_ptr < msg + MAX_MSG_SIZE)
+               {
+                  *(tmp_msg_ptr++) = 0;
+               }
+
+               msg_ptr--;
+               cursor_pos--;
+
+               XUartPs_Send(instance_ptr, &c, 1);
+               XUartPs_Send(instance_ptr, VT100_ERASE_TO_END_LINE, strlen(VT100_ERASE_TO_END_LINE));
+               XUartPs_Send(instance_ptr, (char*)(msg + cursor_pos), strlen((char*)(msg+cursor_pos)));
+
+               //stream->print(c);
+               //stream->print(VT100_ERASE_TO_END_LINE);
+               //stream->print((char*)(msg + cursor_pos));
+         
+               tmp_msg_ptr = msg + cursor_pos;
+               
+               /* move the cursor back to where it came */
+               while(tmp_msg_ptr < msg_ptr)
+               {
+                  //stream->print(VT100_CURSOR_LEFT);
+
+                  XUartPs_Send(instance_ptr, VT100_CURSOR_LEFT, strlen(VT100_CURSOR_LEFT));
+                  tmp_msg_ptr++;
+               }
+
+            }
+
+
+         break;
+
+      default:
+
+         if((msg - msg_ptr) < MAX_MSG_SIZE){
+            /* ================= ADD Character ================== */
+
+            /* Copy all chars forward */
+            tmp_msg_ptr = msg_ptr;
+
+            while(tmp_msg_ptr >= (msg + cursor_pos))
+            {
+               /* Copy the data forward */
+               *(tmp_msg_ptr + 1) = *tmp_msg_ptr;
+               tmp_msg_ptr--;
+            }
+
+            /* Copy in new message pointer */
+            *(tmp_msg_ptr + 1) = c;
+
+            msg_ptr++;
+
+            //stream->print(VT100_ERASE_TO_END_LINE);
+            //stream->print((char*)(msg + cursor_pos));
       
-    case 127:
-    case '\b':
-        /* If you won't end up before the message buffer by deleting a character */
-        if (msg_ptr > msg)
-        {
-            //stream->print(c);
-        	XUartPs_Send(instance_ptr, &c, 1);
-            msg_ptr--;
-        }
-        break;
+            XUartPs_Send(instance_ptr, VT100_ERASE_TO_END_LINE, strlen(VT100_ERASE_TO_END_LINE));
+            XUartPs_Send(instance_ptr, (char*)(msg + cursor_pos), strlen((char*)(msg+cursor_pos)));
 
-    default:
-      /* Copy in the next character */
-      *msg_ptr++ = c;
+            cursor_pos++;
 
-      /* if you have enough chars for a possible command */
-      if(msg_ptr - VT100_CMD_LEN >= msg)
-      {
+            /* move the cursor back to where it came */
+            tmp_msg_ptr = msg + cursor_pos;
+            while(tmp_msg_ptr < msg_ptr)
+            {
+               XUartPs_Send(instance_ptr, VT100_CURSOR_LEFT, strlen(VT100_CURSOR_LEFT));
+               tmp_msg_ptr++;
+            }
 
-         if(strncmp((char*)(msg_ptr - VT100_CMD_LEN), VT100_CURSOR_UP, VT100_CMD_LEN) == 0)
-         {
-
-            /* erase the VT100_UP Command from the end of the message */
-            *(msg_ptr - 2) = 0;
-            *(msg_ptr - 1) = 0;
-            *(msg_ptr )    = 0;
-
-            //stream->print(VT100_ERASE_TO_START_LINE);
-            //stream->print(cmd_prompt);
-            XUartPs_Send(instance_ptr, VT100_ERASE_TO_START_LINE, strlen(VT100_ERASE_TO_START_LINE));
-            XUartPs_Send(instance_ptr, cmd_prompt, strlen(cmd_prompt));
-
-
-            /* Go back one message relative to the current pos (Handle Wrap)*/
-            history_temp_index = CMD_HISTORY_WRAP(history_temp_index - 1);
-
-            /* Copy history temp index into current command buffer */
-            msg_ptr = msg + snprintf((char*)msg, MAX_MSG_SIZE, "%s", (char*)cmd_history[history_temp_index]);
-            XUartPs_Send(instance_ptr,(char*)msg, strlen(msg));
-
-            //stream->print((char*)msg);
-
+            /* ============== END ADD CHARACTER ================== */
          }
+         break;
+      } // switch(c)
 
-         else if(strncmp((char*)(msg_ptr - VT100_CMD_LEN), VT100_CURSOR_DOWN, VT100_CMD_LEN) == 0)
-         {
-            /* erase the VT100_DOWN Command from the end of the message */
-            *(msg_ptr - 2) = 0;
-            *(msg_ptr - 1) = 0;
-            *(msg_ptr )    = 0;
-
-            //stream->print(VT100_ERASE_TO_START_LINE);
-            //stream->print(cmd_prompt);
-            XUartPs_Send(instance_ptr, VT100_ERASE_TO_START_LINE, strlen(VT100_ERASE_TO_START_LINE));
-	    XUartPs_Send(instance_ptr, cmd_prompt, strlen(cmd_prompt));
-
-
-            /* Go back one message relative to the current pos (Handle Wrap)*/
-            history_temp_index = CMD_HISTORY_WRAP(history_temp_index + 1);
-
-            /* Copy history temp index into current command buffer */
-            msg_ptr = msg + snprintf((char*)msg, MAX_MSG_SIZE, "%s", (char*)cmd_history[history_temp_index]);
-            //stream->print((char*)msg);
-            XUartPs_Send(instance_ptr,(char*)msg, strlen(msg));
-
-         }
-
-         /* TODO: Allow for movement of the cursor 
-         else if(strncmp((char*)(msg_ptr - VT100_CMD_LEN), VT100_CURSOR_RIGHT, VT100_CMD_LEN) == 0)
-         {
-         }
-
-         else if(strncmp((char*)(msg_ptr - VT100_CMD_LEN), VT100_CURSOR_LEFT, VT100_CMD_LEN) == 0)
-         {
-            //stream->print("found left");
-         }
-         END TODO: */
-      
-         /* Normal Char entered Print it; */
-         else if(c >= ' ' && c <= '~')
-         {
-            //stream->print(c);
-            XUartPs_Send(instance_ptr, &c, 1);
-         }
-      }
-
-      // normal character entered. Print it.
-      else if(c >= ' ' && c <= '~')
-    	  XUartPs_Send(instance_ptr, &c, 1);
-      }
-   
+    }//else
 }
 
 /**************************************************************************/
@@ -396,7 +490,7 @@ void cmdInit(XUartPs * ptr)
     at the setup() portion of the sketch.
 */
 /**************************************************************************/
-void cmdAdd(char *name, void (*func)(int argc, char **argv))
+void cmdAdd(const char *name, void (*func)(int argc, char **argv))
 {
     // alloc memory for command struct
     cmd_tbl = (cmd_t *)malloc(sizeof(cmd_t));

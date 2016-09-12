@@ -48,6 +48,7 @@
 
 /* Define VT100 Standard Escape Codes */
 #define VT100_CMD_LEN         3  // These commands are always 3 characters.
+#define VT100_ESC             '\x1B'
 #define VT100_CURSOR_UP       "\x1B[A"
 #define VT100_CURSOR_DOWN     "\x1B[B"
 #define VT100_CURSOR_RIGHT    "\x1B[C"
@@ -55,6 +56,7 @@
 
 #define VT100_ERASE_WHOLE_LINE      "\x1B[2K\r"
 #define VT100_ERASE_TO_START_LINE      "\x1B[1K\r"
+#define VT100_ERASE_TO_END_LINE      "\x1B[K"
 #define VT100_CURSOR_HOME     "\x1B[;0H"
 
 //#define USE_HELP  // Makes entering the ? char print all registered functions.
@@ -77,7 +79,8 @@ void cmdInit(Stream * stream);
 #endif
 
 void cmdPoll();
-void cmdAdd(char *name, void (*func)(int argc, char **argv));
+void cmdAdd(const char *name, void (*func)(int argc, char **argv));
 uint32_t cmdStr2Num(char *str, uint8_t base);
+void cmd_add_character(uint8_t ** buff, uint8_t ** msg_ptr, uint8_t cursor_pos, char c);
 
 #endif //CMD_H
