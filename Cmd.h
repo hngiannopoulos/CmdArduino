@@ -61,6 +61,10 @@
 #define USE_HELP  // Makes entering the ? char print all registered functions.
 #define CMD_LEGACY 0 // When 1 uses legacy command formatting;
 
+#ifndef CMD_SILENT 
+#define CMD_SILENT 0
+#endif
+
 
 // command line structure
 typedef struct _cmd_t

@@ -93,6 +93,7 @@ static Stream* stream;
 void cmd_display()
 {
 
+#if(CMD_SILENT == 0)
     char buf[PRINTER_LEN];
     //stream->println();
 
@@ -102,6 +103,7 @@ void cmd_display()
 #else
     strcpy_P(buf, cmd_prompt);
     stream->print(buf);
+#endif
 #endif
 
     return;
@@ -143,16 +145,21 @@ void cmd_parse(char *cmd)
         if (!strcmp(argv[0], cmd_entry->cmd))
         {
             cmd_entry->func(argc, argv);
+#if(CMD_SILENT == 0)
             cmd_display();
+#endif
             return;
         }
     }
 
     // command not recognized. print message and re-generate prompt.
+    //
+#if(CMD_SILENT == 0)
     strcpy_P(buf, cmd_unrecog);
     stream->println(buf);
 
     cmd_display();
+#endif
 }
 
 /**************************************************************************/
@@ -190,6 +197,8 @@ void cmd_handler()
          vt_cmd[i] = stream->read();
       }
 
+
+#if (CMD_SILENT == 0)
       if(strncmp(vt_cmd, VT100_CURSOR_UP, VT100_CMD_LEN) == 0)
       {
 
@@ -241,6 +250,7 @@ void cmd_handler()
             cursor_pos--;
          }
       }
+#endif
 
    } //if(c == VT100_ESC)
 
@@ -256,7 +266,10 @@ void cmd_handler()
             // it to the handler for processing.
             *msg_ptr = '\0';         // Null Terminate the message 
 
+
+#if (CMD_SILENT == 0)
             stream->print("\r\n");   // Print the return characters
+#endif
 
             /* only process if you don't have an empty message */
             if(msg_ptr != msg)
@@ -310,6 +323,8 @@ void cmd_handler()
          break;
 #endif
 
+
+#if (CMD_SILENT == 0)
          case 127:
          case '\b':
 
@@ -332,6 +347,7 @@ void cmd_handler()
                msg_ptr--;
                cursor_pos--;
 
+
                stream->print(c);
                stream->print(VT100_ERASE_TO_END_LINE);
                stream->print((char*)(msg + cursor_pos));
@@ -344,11 +360,11 @@ void cmd_handler()
                   stream->print(VT100_CURSOR_LEFT);
                   tmp_msg_ptr++;
                }
-
             }
 
 
          break;
+#endif
 
       default:
 
@@ -370,8 +386,10 @@ void cmd_handler()
 
             msg_ptr++;
 
+#if (CMD_SILENT == 0)
             stream->print(VT100_ERASE_TO_END_LINE);
             stream->print((char*)(msg + cursor_pos));
+#endif
 
             cursor_pos++;
 
@@ -379,7 +397,10 @@ void cmd_handler()
             tmp_msg_ptr = msg + cursor_pos;
             while(tmp_msg_ptr < msg_ptr)
             {
+
+#if (CMD_SILENT == 0)
                stream->print(VT100_CURSOR_LEFT);
+#endif
                tmp_msg_ptr++;
             }
 
